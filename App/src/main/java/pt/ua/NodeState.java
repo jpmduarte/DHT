@@ -20,11 +20,13 @@ public class NodeState {
     private final int maxHistoricalDaysInMemory;
     private final Clock clock;
 
-    public NodeState(String nodeId, DiskSeriesStore diskStore, Set<String> allowedIndexFields, int maxHistoricalDaysInMemory) {
+    public NodeState(String nodeId, DiskSeriesStore diskStore, Set<String> allowedIndexFields,
+            int maxHistoricalDaysInMemory) {
         this(nodeId, diskStore, allowedIndexFields, maxHistoricalDaysInMemory, Clock.systemUTC());
     }
 
-    NodeState(String nodeId, DiskSeriesStore diskStore, Set<String> allowedIndexFields, int maxHistoricalDaysInMemory, Clock clock) {
+    NodeState(String nodeId, DiskSeriesStore diskStore, Set<String> allowedIndexFields, int maxHistoricalDaysInMemory,
+            Clock clock) {
         this.nodeId = nodeId;
         this.diskStore = diskStore;
         this.allowedIndexFields = Set.copyOf(allowedIndexFields);
@@ -66,7 +68,7 @@ public class NodeState {
         SeriesPartition p = partitions.get(key);
         if (p != null) {
             System.out.println("[state] " + nodeId + " serving from memory");
-            return Flowable.fromIterable(p.snapshot());
+            return p.stream(); // substitui: Flowable.fromIterable(p.snapshot())
         }
 
         System.out.println("[state] " + nodeId + " serving from disk");

@@ -3,6 +3,7 @@ package pt.ua;
 final class DhtProtocol {
     static final String INGEST = "INGEST";
     static final String QUERY = "QUERY";
+    static final String QUERY_RANGE = "QUERY_RANGE"; 
     static final String ACK = "ACK";
     static final String EVENT = "EVENT";
     static final String COMPLETE = "COMPLETE";
@@ -15,7 +16,9 @@ final class DhtProtocol {
         public String op;
         public Event event;
         public String indexField;
-        public String day;
+        public String day;        // para QUERY: dia único
+        public String minDay;     // para QUERY_RANGE: início
+        public String maxDay;     // para QUERY_RANGE: fim
         public String indexValue;
 
         public Request() {
@@ -33,6 +36,16 @@ final class DhtProtocol {
             Request r = new Request();
             r.op = QUERY;
             r.day = day;
+            r.indexField = indexField;
+            r.indexValue = indexValue;
+            return r;
+        }
+
+        static Request queryRange(String minDay, String maxDay, String indexField, String indexValue) {
+            Request r = new Request();
+            r.op = QUERY_RANGE;
+            r.minDay = minDay;
+            r.maxDay = maxDay;
             r.indexField = indexField;
             r.indexValue = indexValue;
             return r;

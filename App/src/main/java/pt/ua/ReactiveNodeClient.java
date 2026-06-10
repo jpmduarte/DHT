@@ -26,13 +26,15 @@ public class ReactiveNodeClient {
         });
     }
 
-    public Flowable<Event> streamSubSeries(NodeInfo node, LocalDate day, String indexField, String indexValue) {
+    public Flowable<Event> streamSubSeriesRange(NodeInfo node, LocalDate minDay, LocalDate maxDay, String indexField,
+            String indexValue) {
         return Flowable.create(emitter -> {
-            DhtProtocol.Request request = DhtProtocol.Request.query(day.toString(), indexField, indexValue);
+            DhtProtocol.Request request = DhtProtocol.Request.queryRange(
+                    minDay.toString(), maxDay.toString(), indexField, indexValue);
 
             try (SocketChannel channel = SocketChannel.open(new InetSocketAddress(node.getHost(), node.getPort()));
-                 BufferedWriter writer = new BufferedWriter(Channels.newWriter(channel, StandardCharsets.UTF_8));
-                 BufferedReader reader = new BufferedReader(Channels.newReader(channel, StandardCharsets.UTF_8))) {
+                    BufferedWriter writer = new BufferedWriter(Channels.newWriter(channel, StandardCharsets.UTF_8));
+                    BufferedReader reader = new BufferedReader(Channels.newReader(channel, StandardCharsets.UTF_8))) {
 
                 writer.write(mapper.writeValueAsString(request));
                 writer.newLine();
@@ -62,13 +64,52 @@ public class ReactiveNodeClient {
                     emitter.onError(e);
                 }
             }
-        }, BackpressureStrategy.BUFFER);
+        }, BackpressureStrategy.ERROR);
+    }
+
+    public Flowable<Event> streamSubSeries(NodeInfo node, LocalDate day, String indexField, String indexValue) {
+        return Flowable.create(emitter -> {
+            DhtProtocol.Request request = DhtProtocol.Request.query(day.toString(), indexField, indexValue);
+
+            try (SocketChannel channel = SocketChannel.open(new InetSocketAddress(node.getHost(), node.getPort()));
+                    BufferedWriter writer = new BufferedWriter(Channels.newWriter(channel, StandardCharsets.UTF_8));
+                    BufferedReader reader = new BufferedReader(Channels.newReader(channel, StandardCharsets.UTF_8))) {
+
+                writer.write(mapper.writeValueAsString(request));
+                writer.newLine();
+                writer.flush();
+
+                String line;
+                while (!emitter.isCancelled() && (line = reader.readLine()) != null) {
+                    DhtProtocol.Response response = mapper.readValue(line, DhtProtocol.Response.class);
+                    if (DhtProtocol.ERROR.equals(response.type)) {
+                        emitter.onError(new IllegalStateException(response.error));
+                        return;
+                    }
+                    if (DhtProtocol.EVENT.equals(response.type) && response.event != null) {
+                        emitter.onNext(response.event);
+                    }
+                    if (DhtProtocol.COMPLETE.equals(response.type)) {
+                        emitter.onComplete();
+                        return;
+                    }
+                }
+
+                if (!emitter.isCancelled()) {
+                    emitter.onComplete();
+                }
+            } catch (Exception e) {
+                if (!emitter.isCancelled()) {
+                    emitter.onError(e);
+                }
+            }
+        }, BackpressureStrategy.ERROR); // já trava se o consumidor é lento
     }
 
     private DhtProtocol.Response sendSingleResponse(NodeInfo node, DhtProtocol.Request request) throws Exception {
         try (SocketChannel channel = SocketChannel.open(new InetSocketAddress(node.getHost(), node.getPort()));
-             BufferedWriter writer = new BufferedWriter(Channels.newWriter(channel, StandardCharsets.UTF_8));
-             BufferedReader reader = new BufferedReader(Channels.newReader(channel, StandardCharsets.UTF_8))) {
+                BufferedWriter writer = new BufferedWriter(Channels.newWriter(channel, StandardCharsets.UTF_8));
+                BufferedReader reader = new BufferedReader(Channels.newReader(channel, StandardCharsets.UTF_8))) {
 
             writer.write(mapper.writeValueAsString(request));
             writer.newLine();

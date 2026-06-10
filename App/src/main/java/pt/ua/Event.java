@@ -1,7 +1,9 @@
 package pt.ua;
 
 import java.time.Instant;
+import java.util.HashMap;
 import java.util.Map;
+import java.util.Objects;
 
 public class Event {
     private String deviceId;
@@ -11,13 +13,14 @@ public class Event {
     private Instant timestamp;
 
     public Event() {
+        this.fields = new HashMap<>();
     }
 
     public Event(String deviceId, String type, String zone, Map<String, String> fields, Instant timestamp) {
         this.deviceId = deviceId;
         this.type = type;
         this.zone = zone;
-        this.fields = fields;
+        this.fields = fields != null ? fields : new HashMap<>();
         this.timestamp = timestamp;
     }
 
@@ -50,7 +53,7 @@ public class Event {
     }
 
     public void setFields(Map<String, String> fields) {
-        this.fields = fields;
+        this.fields = fields != null ? fields : new HashMap<>();
     }
 
     public Instant getTimestamp() {
@@ -62,10 +65,6 @@ public class Event {
     }
 
     public String getField(String key) {
-        if (fields != null && fields.containsKey(key)) {
-            return fields.get(key);
-        }
-
         switch (key) {
             case "deviceId":
                 return deviceId;
@@ -76,7 +75,24 @@ public class Event {
             case "timestamp":
                 return timestamp == null ? null : timestamp.toString();
             default:
-                return null;
+                return fields != null ? fields.get(key) : null;
         }
+    }
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof Event)) return false;
+        Event event = (Event) o;
+        return Objects.equals(deviceId, event.deviceId) &&
+               Objects.equals(type, event.type) &&
+               Objects.equals(zone, event.zone) &&
+               Objects.equals(fields, event.fields) &&
+               Objects.equals(timestamp, event.timestamp);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(deviceId, type, zone, fields, timestamp);
     }
 }

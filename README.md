@@ -18,59 +18,58 @@ This project implements the AST/DHT service in Java using:
 
 From the repository root:
 
-```bash
+```powershell
 cd App
 mvn clean compile dependency:build-classpath -Dmdep.outputFile=cp.txt
 ```
 
 The generated `cp.txt` is used by the commands below.
 
-## Run The Demo
+## Run The Demo (PowerShell)
 
-Open four different terminals. In every terminal, start inside the `App` directory:
+Open four different PowerShell terminals. In every terminal, start inside the `App` directory:
 
-```bash
-cd /Users/joao/Desktop/proj_sd_fase2/DHT/App
-CP="target/classes:$(cat cp.txt)"
+```powershell
+cd C:\Users\joaop\Desktop\proj_sd_fase2\DHT\App
+$CP = "target/classes;" + (Get-Content cp.txt)
 ```
 
 ### Terminal 1: Start DHT Node 1
 
-```bash
-java -cp "$CP" pt.ua.NodeServerMain \
-  node-1 \
-  7878 \
-  2 \
-  zone,sensor,type \
-  node-1:localhost:7878,node-2:localhost:7879
+```powershell
+mvn -q exec:java "-Dexec.mainClass=pt.ua.NodeServerMain" "-Dexec.args=node-1 7878 2 zone,sensor,type node-1:localhost:7878,node-2:localhost:7879"
 ```
 
 ### Terminal 2: Start DHT Node 2
 
-```bash
-java -cp "$CP" pt.ua.NodeServerMain \
-  node-2 \
-  7879 \
-  2 \
-  zone,sensor,type \
-  node-1:localhost:7878,node-2:localhost:7879
+```powershell
+mvn -q exec:java "-Dexec.mainClass=pt.ua.NodeServerMain" "-Dexec.args=node-2 7879 2 zone,sensor,type node-1:localhost:7878,node-2:localhost:7879"
 ```
 
 ### Terminal 3: Run Fake SS
 
 This sends sample events to node 1. The DHT may forward events to node 2 depending on the consistent-hashing owner.
 
-```bash
-java -cp "$CP" pt.ua.FakeSSMain localhost 7878
+```powershell
+mvn -q exec:java "-Dexec.mainClass=pt.ua.FakeSSMain" "-Dexec.args=localhost 7878"
 ```
 
-### Terminal 4: Run Fake SA
+### Terminal 4: Run Fake SA (QUERY por dia único)
 
 This queries sample sub-series through node 1.
 
-```bash
-java -cp "$CP" pt.ua.FakeSAMain localhost 7878
+```powershell
+mvn -q exec:java "-Dexec.mainClass=pt.ua.FakeSAMain" "-Dexec.args=localhost 7878"
 ```
+
+### Terminal 5: Run Simple SA Range (QUERY_RANGE)
+
+This queries sub-series across a range of days (2026-06-01 to 2026-06-09) and computes aggregation.
+
+```powershell
+java -cp "$CP" pt.ua.SimpleSAMainRange localhost 7878
+```
+
 ## Node Arguments
 
 `NodeServerMain` expects:
@@ -81,7 +80,7 @@ NodeServerMain <nodeId> <port> <maxHistoricalDaysInMemory> <indexFieldsCsv> [pee
 
 Example:
 
-```bash
+```powershell
 java -cp "$CP" pt.ua.NodeServerMain node-1 7878 2 zone,sensor,type node-1:localhost:7878,node-2:localhost:7879
 ```
 
