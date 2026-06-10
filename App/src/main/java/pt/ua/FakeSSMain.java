@@ -7,7 +7,9 @@ import java.util.Map;
 public class FakeSSMain {
     public static void main(String[] args) {
         ReactiveNodeClient client = new ReactiveNodeClient();
-        NodeInfo bootstrap = new NodeInfo("node-1", "localhost", 7878);
+        String host = args.length >= 1 ? args[0] : "localhost";
+        int port = args.length >= 2 ? Integer.parseInt(args[1]) : 7878;
+        NodeInfo bootstrap = new NodeInfo("bootstrap", host, port);
 
         Instant fixed = Instant.parse("2026-06-09T12:00:00Z");
         String[] zones = {"eu", "us", "af", "asia", "latam", "me"};
@@ -21,7 +23,14 @@ public class FakeSSMain {
             Event event = new Event("dev-" + i, "temperature", "zone-a", fields, fixed);
             System.out.println("[fake-ss] Sending event " + i + ": " + JsonEventCodec.toJson(event));
 
-            client.ingest(bootstrap, event, "zone").block();
+            try {
+                client.ingest(bootstrap, event, "zone").blockingAwait();
+            } catch (RuntimeException e) {
+                System.err.println("[fake-ss] Ingest failed: " + e.getMessage());
+                System.err.println("[fake-ss] Check that the bootstrap DHT node is running at "
+                        + bootstrap.getHost() + ":" + bootstrap.getPort());
+                throw e;
+            }
         }
 
         System.out.println("[fake-ss] Done.");

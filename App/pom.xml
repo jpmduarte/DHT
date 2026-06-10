@@ -14,11 +14,8 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>11</maven.compiler.release>
-
     <rxjava.version>3.1.10</rxjava.version>
     <jackson.version>2.17.2</jackson.version>
-    <reactor.version>3.6.8</reactor.version>
-    <rsocket.version>1.1.4</rsocket.version>
     <maven.compiler.plugin.version>3.15.0</maven.compiler.plugin.version>
   </properties>
 
@@ -36,31 +33,9 @@
     </dependency>
 
     <dependency>
-      <groupId>io.projectreactor</groupId>
-      <artifactId>reactor-core</artifactId>
-      <version>${reactor.version}</version>
-    </dependency>
-
-    <dependency>
-      <groupId>io.rsocket</groupId>
-      <artifactId>rsocket-core</artifactId>
-      <version>${rsocket.version}</version>
-    </dependency>
-
-    <dependency>
-      <groupId>io.rsocket</groupId>
-      <artifactId>rsocket-transport-netty</artifactId>
-      <version>${rsocket.version}</version>
-    </dependency>
-    <dependency>
       <groupId>com.fasterxml.jackson.datatype</groupId>
       <artifactId>jackson-datatype-jsr310</artifactId>
-      <version>2.17.2</version>
-    </dependency>
-    <dependency>
-      <groupId>io.projectreactor.addons</groupId>
-      <artifactId>reactor-adapter</artifactId>
-      <version>3.6.0</version>
+      <version>${jackson.version}</version>
     </dependency>
   </dependencies>
 

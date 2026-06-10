@@ -62,6 +62,21 @@ public class Event {
     }
 
     public String getField(String key) {
-        return fields == null ? null : fields.get(key);
+        if (fields != null && fields.containsKey(key)) {
+            return fields.get(key);
+        }
+
+        switch (key) {
+            case "deviceId":
+                return deviceId;
+            case "type":
+                return type;
+            case "zone":
+                return zone;
+            case "timestamp":
+                return timestamp == null ? null : timestamp.toString();
+            default:
+                return null;
+        }
     }
 }

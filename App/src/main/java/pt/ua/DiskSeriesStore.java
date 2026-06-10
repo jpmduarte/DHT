@@ -1,10 +1,10 @@
 package pt.ua;
 
-import reactor.core.publisher.Flux;
+import io.reactivex.rxjava3.core.Flowable;
 
-import java.io.BufferedReader;
 import java.io.BufferedWriter;
 import java.io.IOException;
+import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -17,7 +17,8 @@ public class DiskSeriesStore {
     }
 
     public Path pathFor(SeriesKey key) {
-        String fileName = key.getDay() + "__" + key.getIndexField() + "__" + key.getIndexValue() + ".log";
+        String fileName = key.getDay() + "__" + encodePathPart(key.getIndexField()) + "__"
+                + encodePathPart(key.getIndexValue()) + ".log";
         return baseDir.resolve(fileName);
     }
 
@@ -37,27 +38,27 @@ public class DiskSeriesStore {
         System.out.println("[disk] appended to " + path.toAbsolutePath());
     }
 
-    public Flux<Event> streamAll(SeriesKey key) {
+    public Flowable<Event> streamAll(SeriesKey key) {
         Path path = pathFor(key);
-        if (!Files.exists(path)) {
+        if (!Files.isRegularFile(path)) {
             System.out.println("[disk] no file for " + key + " at " + path.toAbsolutePath());
-            return Flux.empty();
+            return Flowable.empty();
         }
 
         System.out.println("[disk] reading " + path.toAbsolutePath());
 
-        return Flux.using(
+        return Flowable.using(
                 () -> Files.newBufferedReader(path, StandardCharsets.UTF_8),
-                br -> Flux.generate(sink -> {
+                br -> Flowable.generate(emitter -> {
                     try {
                         String line = br.readLine();
                         if (line == null) {
-                            sink.complete();
+                            emitter.onComplete();
                         } else {
-                            sink.next(JsonEventCodec.fromJson(line));
+                            emitter.onNext(JsonEventCodec.fromJson(line));
                         }
-                    } catch (IOException e) {
-                        sink.error(e);
+                    } catch (IOException | RuntimeException e) {
+                        emitter.onError(e);
                     }
                 }),
                 br -> {
@@ -67,5 +68,9 @@ public class DiskSeriesStore {
                     }
                 }
         );
+    }
+
+    private String encodePathPart(String value) {
+        return URLEncoder.encode(value, StandardCharsets.UTF_8).replace("+", "%20");
     }
 }

@@ -1,17 +1,22 @@
 package pt.ua;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import io.rsocket.Payload;
-import io.rsocket.RSocket;
-import io.rsocket.core.RSocketServer;
-import io.rsocket.transport.netty.server.TcpServerTransport;
-import io.rsocket.util.DefaultPayload;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.Mono;
+import io.reactivex.rxjava3.core.Flowable;
 
+import java.io.BufferedReader;
+import java.io.BufferedWriter;
+import java.io.IOException;
 import java.math.BigInteger;
+import java.net.InetSocketAddress;
+import java.nio.channels.Channels;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
+import java.util.Objects;
 import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 public class DhtNodeServer {
     private final NodeState state;
@@ -19,6 +24,7 @@ public class DhtNodeServer {
     private final PeerTable peers;
     private final ReactiveNodeClient client;
     private final ObjectMapper mapper = new ObjectMapper().findAndRegisterModules();
+    private final ExecutorService connectionPool = Executors.newCachedThreadPool();
 
     public DhtNodeServer(NodeState state, NodeInfo self, PeerTable peers) {
         this.state = state;
@@ -30,150 +36,109 @@ public class DhtNodeServer {
     public void start() {
         System.out.println("[server] Starting DHT node=" + self.getNodeId() + " on port=" + self.getPort());
 
-        RSocketServer.create((setup, sendingSocket) -> Mono.just(new RSocket() {
-
-                    @Override
-                    public Mono<Void> fireAndForget(Payload payload) {
-                        return Mono.<Void>fromRunnable(() -> handleIngest(payload))
-                                .onErrorResume(e -> Mono.<Void>empty());
-                    }
-
-                    @Override
-                    public Flux<Payload> requestStream(Payload payload) {
-                        try {
-                            return handleQuery(payload)
-                                    .onErrorResume(e -> Flux.just(
-                                            DefaultPayload.create(
-                                                    toJsonSafe(QueryResponse.error(UUID.randomUUID().toString(), e.getMessage()))
-                                            )
-                                    ));
-                        } catch (Exception e) {
-                            return Flux.just(DefaultPayload.create(
-                                    toJsonSafe(QueryResponse.error(UUID.randomUUID().toString(), e.getMessage()))
-                            ));
-                        }
-                    }
-
-                    private void handleIngest(Payload payload) {
-                        try {
-                            ReactiveNodeClient.IngestRequest req =
-                                    mapper.readValue(payload.getDataUtf8(), ReactiveNodeClient.IngestRequest.class);
-
-                            Event event = req.event;
-                            String indexField = req.indexField;
-                            String indexValue = event.getField(indexField);
-                            if (indexValue == null) return;
-
-                            LocalDate day = event.getTimestamp().atZone(java.time.ZoneOffset.UTC).toLocalDate();
-                            String shardKey = day + "|" + indexField + "|" + indexValue;
-                            BigInteger targetId = KeyHasher.hashToId(shardKey);
-
-                            NodeInfo owner = responsibleNode(targetId);
-                            if (owner == null) return;
-
-                            if (owner.getNodeId().equals(self.getNodeId())) {
-                                state.ingest(event, indexField);
-                                return;
-                            }
-
-                            client.ingest(owner, event, indexField).subscribe();
-                        } catch (Exception e) {
-                            throw new RuntimeException(e);
-                        }
-                    }
-
-                    private Flux<Payload> handleQuery(Payload payload) {
-                        try {
-                            ReactiveNodeClient.QueryRequest req =
-                                    mapper.readValue(payload.getDataUtf8(), ReactiveNodeClient.QueryRequest.class);
-
-                            LocalDate day = LocalDate.parse(req.day);
-                            String shardKey = day + "|" + req.indexField + "|" + req.indexValue;
-                            BigInteger targetId = KeyHasher.hashToId(shardKey);
-
-                            NodeInfo owner = responsibleNode(targetId);
-                            if (owner == null) {
-                                return Flux.just(DefaultPayload.create(
-                                        toJsonSafe(QueryResponse.error(UUID.randomUUID().toString(), "No owner found"))
-                                ));
-                            }
-
-                            String requestId = UUID.randomUUID().toString();
-
-                            Flux<Event> source = owner.getNodeId().equals(self.getNodeId())
-                                    ? state.streamSubSeries(day, req.indexField, req.indexValue)
-                                    : client.streamSubSeries(owner, day, req.indexField, req.indexValue);
-
-                            return source
-                                    .map(ev -> DefaultPayload.create(toJsonSafe(QueryResponse.event(requestId, ev))))
-                                    .concatWith(Mono.fromSupplier(() ->
-                                            DefaultPayload.create(toJsonSafe(QueryResponse.complete(requestId)))
-                                    ).flux());
-                        } catch (Exception e) {
-                            return Flux.just(DefaultPayload.create(
-                                    toJsonSafe(QueryResponse.error(UUID.randomUUID().toString(), e.getMessage()))
-                            ));
-                        }
-                    }
-
-                    private NodeInfo responsibleNode(BigInteger targetId) {
-                        NodeInfo best = self;
-                        BigInteger bestDist = KeyHasher.xorDistance(KeyHasher.hashToId(self.getNodeId()), targetId);
-
-                        for (NodeInfo peer : peers.allPeers()) {
-                            if (peer.getNodeId().equals(self.getNodeId())) continue;
-                            BigInteger dist = KeyHasher.xorDistance(KeyHasher.hashToId(peer.getNodeId()), targetId);
-                            if (dist.compareTo(bestDist) < 0) {
-                                best = peer;
-                                bestDist = dist;
-                            }
-                        }
-                        return best;
-                    }
-
-                    private String toJsonSafe(Object value) {
-                        try {
-                            return mapper.writeValueAsString(value);
-                        } catch (Exception ex) {
-                            throw new RuntimeException(ex);
-                        }
-                    }
-                }))
-                .bind(TcpServerTransport.create(self.getPort()))
-                .block()
-                .onClose()
-                .block();
+        try (ServerSocketChannel server = ServerSocketChannel.open()) {
+            server.bind(new InetSocketAddress(self.getPort()));
+            while (true) {
+                SocketChannel socket = server.accept();
+                connectionPool.submit(() -> handleConnection(socket));
+            }
+        } catch (IOException e) {
+            throw new RuntimeException("DHT node failed", e);
+        }
     }
 
-    static class QueryResponse {
-        public String requestId;
-        public String type;
-        public Event event;
-        public String error;
+    private void handleConnection(SocketChannel socket) {
+        String requestId = UUID.randomUUID().toString();
+        try (SocketChannel channel = socket;
+             BufferedReader reader = new BufferedReader(Channels.newReader(channel, StandardCharsets.UTF_8));
+             BufferedWriter writer = new BufferedWriter(Channels.newWriter(channel, StandardCharsets.UTF_8))) {
+            try {
+                String line = reader.readLine();
+                if (line == null) {
+                    return;
+                }
 
-        public QueryResponse() {}
+                DhtProtocol.Request request = mapper.readValue(line, DhtProtocol.Request.class);
+                if (DhtProtocol.INGEST.equals(request.op)) {
+                    handleIngest(request);
+                    writeResponse(writer, DhtProtocol.Response.ack(requestId));
+                } else if (DhtProtocol.QUERY.equals(request.op)) {
+                    handleQuery(request, requestId, writer);
+                } else {
+                    writeResponse(writer, DhtProtocol.Response.error(requestId, "Unknown operation: " + request.op));
+                }
+            } catch (Exception e) {
+                System.err.println("[server] request failed: " + e.getMessage());
+                writeResponse(writer, DhtProtocol.Response.error(requestId, e.getMessage()));
+            }
+        } catch (Exception e) {
+            System.err.println("[server] request failed: " + e.getMessage());
+        }
+    }
 
-        static QueryResponse event(String requestId, Event event) {
-            QueryResponse r = new QueryResponse();
-            r.requestId = requestId;
-            r.type = "EVENT";
-            r.event = event;
-            return r;
+    private void handleIngest(DhtProtocol.Request request) {
+        Event event = Objects.requireNonNull(request.event, "Missing event");
+        String indexField = requireText(request.indexField, "Missing indexField");
+        Objects.requireNonNull(event.getTimestamp(), "Missing event timestamp");
+        state.validateIndexField(indexField);
+
+        String indexValue = event.getField(indexField);
+        if (indexValue == null) {
+            return;
         }
 
-        static QueryResponse complete(String requestId) {
-            QueryResponse r = new QueryResponse();
-            r.requestId = requestId;
-            r.type = "COMPLETE";
-            return r;
+        NodeInfo owner = ownerFor(eventDay(event), indexField, indexValue);
+        if (owner.getNodeId().equals(self.getNodeId())) {
+            try {
+                state.ingest(event, indexField);
+            } catch (Exception e) {
+                throw new RuntimeException(e);
+            }
+            return;
         }
 
-        static QueryResponse error(String requestId, String error) {
-            QueryResponse r = new QueryResponse();
-            r.requestId = requestId;
-            r.type = "ERROR";
-            r.error = error;
-            return r;
+        client.ingest(owner, event, indexField).blockingAwait();
+    }
+
+    private void handleQuery(DhtProtocol.Request request, String requestId, BufferedWriter writer) {
+        LocalDate day = LocalDate.parse(requireText(request.day, "Missing day"));
+        String indexField = requireText(request.indexField, "Missing indexField");
+        String indexValue = requireText(request.indexValue, "Missing indexValue");
+        state.validateIndexField(indexField);
+
+        NodeInfo owner = ownerFor(day, indexField, indexValue);
+        Flowable<Event> source = owner.getNodeId().equals(self.getNodeId())
+                ? state.streamSubSeries(day, indexField, indexValue)
+                : client.streamSubSeries(owner, day, indexField, indexValue);
+
+        source.blockingForEach(event -> writeResponse(writer, DhtProtocol.Response.event(requestId, event)));
+        writeResponse(writer, DhtProtocol.Response.complete(requestId));
+    }
+
+    private NodeInfo ownerFor(LocalDate day, String indexField, String indexValue) {
+        String shardKey = day + "|" + indexField + "|" + indexValue;
+        BigInteger targetId = KeyHasher.hashToId(shardKey);
+        return peers.responsibleNode(targetId, self);
+    }
+
+    private LocalDate eventDay(Event event) {
+        return event.getTimestamp().atZone(java.time.ZoneOffset.UTC).toLocalDate();
+    }
+
+    private void writeResponse(BufferedWriter writer, DhtProtocol.Response response) {
+        try {
+            writer.write(mapper.writeValueAsString(response));
+            writer.newLine();
+            writer.flush();
+        } catch (IOException e) {
+            throw new RuntimeException(e);
         }
+    }
+
+    private String requireText(String value, String message) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(message);
+        }
+        return value;
     }
 }

@@ -1,9 +1,0 @@
-{"deviceId":"dev-2","type":"temperature","zone":"zone-a","fields":{"zone":"af","sensor":"s2"},"timestamp":1781006400.000000000}
-{"deviceId":"dev-8","type":"temperature","zone":"zone-a","fields":{"zone":"af","sensor":"s8"},"timestamp":1781006400.000000000}
-{"deviceId":"dev-14","type":"temperature","zone":"zone-a","fields":{"zone":"af","sensor":"s14"},"timestamp":1781006400.000000000}
-{"deviceId":"dev-8","type":"temperature","zone":"zone-a","fields":{"zone":"af","sensor":"s8"},"timestamp":1781006400.000000000}
-{"deviceId":"dev-2","type":"temperature","zone":"zone-a","fields":{"zone":"af","sensor":"s2"},"timestamp":1781006400.000000000}
-{"deviceId":"dev-14","type":"temperature","zone":"zone-a","fields":{"zone":"af","sensor":"s14"},"timestamp":1781006400.000000000}
-{"deviceId":"dev-8","type":"temperature","zone":"zone-a","fields":{"zone":"af","sensor":"s8"},"timestamp":1781006400.000000000}
-{"deviceId":"dev-2","type":"temperature","zone":"zone-a","fields":{"zone":"af","sensor":"s2"},"timestamp":1781006400.000000000}
-{"deviceId":"dev-14","type":"temperature","zone":"zone-a","fields":{"zone":"af","sensor":"s14"},"timestamp":1781006400.000000000}
